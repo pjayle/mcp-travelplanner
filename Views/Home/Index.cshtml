@@ -1,0 +1,94 @@
+@{ ViewData["Title"] = "Plan your trip"; }
+
+<div class="hero text-center">
+  <div class="container">
+    <h1 class="display-5 fw-bold"><i class="bi bi-airplane-engines"></i> AI Travel Planner</h1>
+    <p class="lead mb-0">Weather, flights &amp; hotels - orchestrated across multiple MCP servers.</p>
+  </div>
+</div>
+
+<div class="container pb-5">
+  <div class="card planner-card">
+    <div class="card-body p-4">
+      <div class="row g-3">
+        <div class="col-md-9">
+          <label class="form-label fw-semibold">What trip do you want?</label>
+          <textarea id="prompt" class="form-control" rows="2"
+            placeholder="e.g. Plan 5 day plan for Japan">Plan 5 day plan for Japan</textarea>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Departing from</label>
+          <input id="origin" class="form-control" placeholder="e.g. Delhi" />
+        </div>
+      </div>
+
+      <div class="mt-3 d-flex flex-wrap gap-2 align-items-center">
+        <button id="go" class="btn btn-primary btn-lg"><i class="bi bi-magic"></i> Plan my trip</button>
+        <span class="text-muted small ms-2">Try:</span>
+        <button class="btn btn-sm btn-outline-secondary chip">3 day Paris weekend with a mid-range budget</button>
+        <button class="btn btn-sm btn-outline-secondary chip">7 days Bali honeymoon</button>
+        <button class="btn btn-sm btn-outline-secondary chip">4 day Tokyo and Kyoto trip</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="loading" class="text-center my-5 d-none">
+    <div class="spinner-border text-primary" style="width:3rem;height:3rem"></div>
+    <p class="mt-3 text-muted">Agent is calling weather, flight and hotel MCP servers...</p>
+  </div>
+
+  <div id="error" class="alert alert-danger mt-4 d-none"></div>
+
+  <div id="result" class="row g-4 mt-1 d-none">
+    <div class="col-lg-8">
+      <div class="card shadow-sm"><div class="card-body plan-output" id="plan"></div></div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm">
+        <div class="card-header fw-semibold"><i class="bi bi-diagram-3"></i> MCP tool calls</div>
+        <div class="accordion accordion-flush" id="trace"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+@section Scripts {
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => (s ?? '').toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  document.querySelectorAll('.chip').forEach(b => b.onclick = () => { $('prompt').value = b.textContent; $('go').click(); });
+
+  $('go').onclick = async () => {
+    $('error').classList.add('d-none'); $('result').classList.add('d-none'); $('loading').classList.remove('d-none');
+    $('go').disabled = true;
+    try {
+      const res = await fetch('/Home/Plan', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ prompt: $('prompt').value, origin: $('origin').value })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+
+      $('plan').innerHTML = data.html;   // server-rendered markdown (raw HTML disabled)
+      $('trace').innerHTML = data.toolCalls.map((t,i) => `
+        <div class="accordion-item">
+          <h2 class="accordion-header">
+            <button class="accordion-button collapsed py-2" data-bs-toggle="collapse" data-bs-target="#t${i}">
+              <span class="badge badge-${esc(t.server)} me-2">${esc(t.server)}</span><code>${esc(t.tool)}</code>
+            </button>
+          </h2>
+          <div id="t${i}" class="accordion-collapse collapse"><div class="accordion-body p-2">
+            <div class="small fw-semibold">Arguments</div><pre class="trace">${esc(t.arguments)}</pre>
+            <div class="small fw-semibold">Result</div><pre class="trace">${esc(t.result)}</pre>
+          </div></div>
+        </div>`).join('') || '<div class="p-3 text-muted small">No tools were called.</div>';
+      $('result').classList.remove('d-none');
+    } catch (e) {
+      $('error').textContent = e.message; $('error').classList.remove('d-none');
+    } finally {
+      $('loading').classList.add('d-none'); $('go').disabled = false;
+    }
+  };
+</script>
+}
